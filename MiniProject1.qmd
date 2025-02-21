@@ -1,0 +1,180 @@
+---
+title: "MiniProject1"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+# Initial packages required (we'll be adding more)
+library(tidyverse)
+library(mdsr)     # package associated with our MDSR book
+library(maps)
+library(viridis)
+library(leaflet)
+
+library(htmltools)
+library(glue)
+```
+
+# Import dataset
+
+```{r}
+
+driving <- read_csv("~/SDS264_F24/Licensed_Driver_Dashboard_Data.csv")
+
+driving <- driving |> 
+  filter(Year == 2019) |>
+  mutate(State = str_to_lower(State))
+  
+female_totals <- driving |> 
+  filter(Sex == "Female") |> 
+  group_by(State) |> 
+  summarise(female_total = sum(Drivers))
+  
+
+drivingTotals <- driving |> 
+  group_by(State) |> 
+  summarise(total = sum(Drivers)) |> 
+  mutate(total_rounded = total/1000) |> 
+  full_join(female_totals) |> 
+  mutate(pct_female = trunc((female_total / total)*10^4)/10^4) |> 
+  mutate(majority_female = ifelse(pct_female >= 0.50, "Majority Female", "Majority Male"))
+
+```
+
+
+# Map 1
+
+```{r}
+
+us_states <- map_data("state")
+
+drivingTotals |>
+  right_join(us_states, by = c("State" = "region")) |>
+  rename(region = State) |>
+  ggplot(mapping = aes(x = long, y = lat,
+                          group = group)) + 
+  geom_polygon(aes(fill = total_rounded), color = "black") +
+  theme_void() +
+  scale_fill_viridis() +
+  labs(
+    fill = "Total Drivers (Thousands)",
+    title = "Distribution of Total Drivers in the United States",
+    caption = "https://catalog.data.gov/dataset/licensed-drivers-by-state-gender-and-age-group"
+  )
+```
+
+This map shows us how many total drivers are in each state. We can see that states with higher populations and larger urban areas (California, Texas, Florida) have more licensed drivers. 
+
+
+# Interactive Map 1
+
+```{r}
+
+library(sf) 
+states <- read_sf("https://rstudio.github.io/leaflet/json/us-states.geojson")  #<2>
+
+states <- states |> 
+  mutate(name = str_to_lower(name))
+
+totalInteractiveMap <- states |>
+  left_join(drivingTotals, by = c("name" = "State")) |> 
+  mutate(labels = str_c(name, ": ", total_rounded, " drivers, in thousands"))
+
+bins <- c(0, 50, 100, 200, 500, 1000, 2000, Inf)
+pal <- colorBin("YlOrRd", domain = totalInteractiveMap$total_rounded, bins = bins)
+
+labels <- lapply(totalInteractiveMap$labels, HTML)
+
+leaflet(totalInteractiveMap) %>%
+  setView(-96, 37.8, 4) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~pal(total_rounded),
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")) %>%
+  addLegend(pal = pal, values = ~total_rounded, opacity = 0.7, title = NULL,
+    position = "bottomright")
+```
+
+
+# Map 2
+
+```{r}
+drivingTotals |>
+  right_join(us_states, by = c("State" = "region")) |>
+  rename(region = State) |>
+  ggplot(mapping = aes(x = long, y = lat,
+                          group = group)) + 
+  geom_polygon(aes(fill = majority_female), color = "black") +
+  theme_void() +
+  scale_fill_manual(values = c("purple", "green")) +
+  labs(
+    fill = "Driver Distribution",
+    title = "Distribution of Male and Female Drivers in the United States",
+    caption = "https://catalog.data.gov/dataset/licensed-drivers-by-state-gender-and-age-group"
+  )
+```
+
+This is a coded map showing the distribution of male and female drivers for all contiguous states in the US. The variable displayed is categorical, with the 2 categories being "Majority Female" and "Majority Male". Based on this graph, we can see that most states have a majority female population of drivers. The south west, pacific northwest, and Midwest regions are almost all majority male drivers, and almost every other state is a majority female. 
+
+
+```{r}
+totalInteractiveMap <- states |>
+  left_join(drivingTotals, by = c("name" = "State")) |> 
+  mutate(labels2 = str_c(name, ": ", (pct_female*100), "% of driver population is female"))
+
+factpal <- colorFactor(c("purple", "green"),
+                       levels(totalInteractiveMap$majority_female))
+
+labels2 <- lapply(totalInteractiveMap$labels2, HTML)
+
+leaflet(totalInteractiveMap) %>%
+  setView(-96, 37.8, 4) %>%
+  addTiles() %>%
+  addPolygons(
+    fillColor = ~factpal(totalInteractiveMap$majority_female),
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlightOptions = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels2,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto")) %>%
+  addLegend(pal = factpal, values = ~majority_female, opacity = 0.7, title = NULL,
+    position = "bottomright")
+```
+
+
+
+
+
+
+
