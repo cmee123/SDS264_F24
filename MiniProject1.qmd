@@ -85,7 +85,7 @@ totalInteractiveMap <- states |>
   left_join(drivingTotals, by = c("name" = "State")) |> 
   mutate(labels = str_c(name, ": ", total_rounded, " drivers, in thousands"))
 
-bins <- c(0, 50, 100, 200, 500, 1000, 2000, Inf)
+bins <- c(100, 500, 1000, 2000, 4000, 7000, 10000, 20000, Inf)
 pal <- colorBin("YlOrRd", domain = totalInteractiveMap$total_rounded, bins = bins)
 
 labels <- lapply(totalInteractiveMap$labels, HTML)
